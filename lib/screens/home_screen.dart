@@ -5,7 +5,7 @@ import '../providers/chat_provider.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/post_card.dart';
 import '../widgets/create_post_dialog.dart';
-import 'profile_screen.dart';
+import 'user_profile_screen.dart';
 import 'search_screen.dart';
 import 'chat_list_screen.dart';
 
@@ -28,14 +28,21 @@ class _HomeScreenState extends State<HomeScreen> {
       final currentUserId = authProvider.currentUser?.id;
       print('HomeScreen: Current user ID: $currentUserId'); // Debug
       print('HomeScreen: Is logged in: ${authProvider.isLoggedIn}'); // Debug
-      context.read<PostsProvider>().fetchPosts(currentUserId: currentUserId);
+      
+      if (currentUserId != null) {
+        // Start listening to real-time posts stream
+        context.read<PostsProvider>().startListeningToPosts(currentUserId);
+      }
     });
 
+    // Add scroll listener for infinite scroll (but prevent duplicates)
     _scrollController.addListener(() {
       if (_scrollController.position.pixels == _scrollController.position.maxScrollExtent) {
         final authProvider = context.read<AuthProvider>();
         final currentUserId = authProvider.currentUser?.id;
-        context.read<PostsProvider>().fetchPosts(currentUserId: currentUserId);
+        if (currentUserId != null) {
+          context.read<PostsProvider>().fetchPosts(currentUserId: currentUserId);
+        }
       }
     });
   }
@@ -43,6 +50,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _scrollController.dispose();
+    // Stop listening to posts stream when leaving home screen
+    context.read<PostsProvider>().stopListeningToPosts();
     super.dispose();
   }
 
@@ -54,10 +63,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildFeedTab() {
     return RefreshIndicator(
-      onRefresh: () {
+      onRefresh: () async {
         final authProvider = context.read<AuthProvider>();
         final currentUserId = authProvider.currentUser?.id;
-        return context.read<PostsProvider>().fetchPosts(refresh: true, currentUserId: currentUserId);
+        if (currentUserId != null) {
+          // Restart the posts stream for refresh
+          context.read<PostsProvider>().stopListeningToPosts();
+          context.read<PostsProvider>().startListeningToPosts(currentUserId);
+        }
       },
       child: CustomScrollView(
         controller: _scrollController,
@@ -125,6 +138,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 delegate: SliverChildBuilderDelegate(
                   (context, index) {
                     if (index == postsProvider.posts.length) {
+                      // Loading indicator at the bottom for infinite scroll
                       return postsProvider.hasMore
                           ? const Padding(
                               padding: EdgeInsets.all(16.0),
@@ -147,7 +161,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildChatTab() {
-    return const ChatListScreen();
+    return ChatListScreen();
   }
 
   Widget _buildSearchTab() {
@@ -155,25 +169,46 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildProfileTab() {
-    return const ProfileScreen();
+    return const UserProfileScreen(); // null userId means current user's profile
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: const Color(0xFF0A0A0A), // Darker background
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1E1E1E),
+        backgroundColor: const Color(0xFF1A1A1A),
         elevation: 0,
         scrolledUnderElevation: 0,
-        title: const Text(
-          'SocialNetwork',
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 24,
-            color: Colors.white,
-            fontFamily: 'Billabong', // Instagram-like font
-          ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF6C5CE7), Color(0xFFA29BFE)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.camera_alt_outlined,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'SocialNetwork',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 22,
+                color: Colors.white,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ],
         ),
         actions: [
           if (_selectedIndex == 0) ...[
@@ -191,7 +226,7 @@ class _HomeScreenState extends State<HomeScreen> {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const ChatListScreen()),
+                  MaterialPageRoute(builder: (_) => ChatListScreen()),
                 );
               },
             ),
@@ -235,11 +270,26 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (context, chatProvider, child) {
           final unreadCount = chatProvider.totalUnreadCount;
           
-          return BottomNavigationBar(
-            type: BottomNavigationBarType.fixed,
-            backgroundColor: const Color(0xFF1E1E1E),
-            selectedItemColor: const Color(0xFF0095F6),
-            unselectedItemColor: Colors.grey.shade400,
+          return Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A1A1A),
+              border: const Border(
+                top: BorderSide(color: Color(0xFF2D2D2D), width: 0.5),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  offset: const Offset(0, -2),
+                  blurRadius: 8,
+                ),
+              ],
+            ),
+            child: BottomNavigationBar(
+              type: BottomNavigationBarType.fixed,
+              backgroundColor: Colors.transparent,
+              selectedItemColor: const Color(0xFF6C5CE7),
+              unselectedItemColor: Colors.grey.shade500,
+              elevation: 0,
             items: <BottomNavigationBarItem>[
               const BottomNavigationBarItem(
                 icon: Icon(Icons.home),
@@ -290,6 +340,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
             currentIndex: _selectedIndex,
             onTap: _onItemTapped,
+            ),
           );
         },
       ),

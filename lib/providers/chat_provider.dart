@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import '../models/message_model.dart';
 import '../models/conversation_model.dart';
+import '../services/chat_service.dart';
 
 class ChatProvider with ChangeNotifier {
+  final ChatService _chatService = ChatService();
   final Map<String, List<Message>> _messages = {};
-  final List<Conversation> _conversations = [];
+  final Map<String, StreamSubscription<List<Message>>?> _messageSubscriptions = {};
+  List<Conversation> _conversations = [];
+  StreamSubscription<List<Conversation>>? _conversationsSubscription;
   bool _isLoading = false;
   String? _activeConversationId;
 
@@ -12,262 +17,168 @@ class ChatProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get activeConversationId => _activeConversationId;
 
-  // Mock data for demonstration
-  static final List<Conversation> _mockConversations = [
-    Conversation(
-      id: 'conv_1',
-      participantIds: ['1', '2'],
-      type: ConversationType.direct,
-      lastActivity: DateTime.now().subtract(const Duration(minutes: 15)),
-      unreadCount: 2,
-      participantNames: {'1': 'John Doe', '2': 'Jane Smith'},
-      participantAvatars: {'1': null, '2': null},
-      lastMessage: Message(
-        id: 'msg_1',
-        conversationId: 'conv_1',
-        senderId: '2',
-        content: 'Hey! How are you doing?',
-        timestamp: DateTime.now().subtract(const Duration(minutes: 15)),
-      ),
-    ),
-    Conversation(
-      id: 'conv_2',
-      participantIds: ['1', '3'],
-      type: ConversationType.direct,
-      lastActivity: DateTime.now().subtract(const Duration(hours: 2)),
-      unreadCount: 0,
-      participantNames: {'1': 'John Doe', '3': 'Alex Johnson'},
-      participantAvatars: {'1': null, '3': null},
-      lastMessage: Message(
-        id: 'msg_2',
-        conversationId: 'conv_2',
-        senderId: '1',
-        content: 'Thanks for your help with the project!',
-        timestamp: DateTime.now().subtract(const Duration(hours: 2)),
-      ),
-    ),
-    Conversation(
-      id: 'conv_3',
-      participantIds: ['1', '2', '3', '4'],
-      type: ConversationType.group,
-      name: 'Flutter Developers',
-      lastActivity: DateTime.now().subtract(const Duration(hours: 5)),
-      unreadCount: 1,
-      participantNames: {
-        '1': 'John Doe',
-        '2': 'Jane Smith',
-        '3': 'Alex Johnson',
-        '4': 'Sarah Wilson'
-      },
-      participantAvatars: {'1': null, '2': null, '3': null, '4': null},
-      lastMessage: Message(
-        id: 'msg_3',
-        conversationId: 'conv_3',
-        senderId: '4',
-        content: 'Anyone available for code review?',
-        timestamp: DateTime.now().subtract(const Duration(hours: 5)),
-      ),
-    ),
-  ];
-
-  static final Map<String, List<Message>> _mockMessages = {
-    'conv_1': [
-      Message(
-        id: 'msg_1_1',
-        conversationId: 'conv_1',
-        senderId: '2',
-        content: 'Hello John!',
-        timestamp: DateTime.now().subtract(const Duration(hours: 1)),
-        isRead: true,
-      ),
-      Message(
-        id: 'msg_1_2',
-        conversationId: 'conv_1',
-        senderId: '1',
-        content: 'Hi Jane! How have you been?',
-        timestamp: DateTime.now().subtract(const Duration(minutes: 50)),
-        isRead: true,
-      ),
-      Message(
-        id: 'msg_1_3',
-        conversationId: 'conv_1',
-        senderId: '2',
-        content: 'I\'ve been great! Working on some exciting projects.',
-        timestamp: DateTime.now().subtract(const Duration(minutes: 45)),
-        isRead: true,
-      ),
-      Message(
-        id: 'msg_1_4',
-        conversationId: 'conv_1',
-        senderId: '2',
-        content: 'Hey! How are you doing?',
-        timestamp: DateTime.now().subtract(const Duration(minutes: 15)),
-        isRead: false,
-      ),
-      Message(
-        id: 'msg_1_5',
-        conversationId: 'conv_1',
-        senderId: '2',
-        content: 'Are you free for a quick call later?',
-        timestamp: DateTime.now().subtract(const Duration(minutes: 10)),
-        isRead: false,
-      ),
-    ],
-    'conv_2': [
-      Message(
-        id: 'msg_2_1',
-        conversationId: 'conv_2',
-        senderId: '3',
-        content: 'Thanks for helping with the Flutter project!',
-        timestamp: DateTime.now().subtract(const Duration(hours: 3)),
-        isRead: true,
-      ),
-      Message(
-        id: 'msg_2_2',
-        conversationId: 'conv_2',
-        senderId: '1',
-        content: 'No problem! It was fun working together.',
-        timestamp: DateTime.now().subtract(const Duration(hours: 2, minutes: 30)),
-        isRead: true,
-      ),
-      Message(
-        id: 'msg_2_3',
-        conversationId: 'conv_2',
-        senderId: '1',
-        content: 'Thanks for your help with the project!',
-        timestamp: DateTime.now().subtract(const Duration(hours: 2)),
-        isRead: true,
-      ),
-    ],
-    'conv_3': [
-      Message(
-        id: 'msg_3_1',
-        conversationId: 'conv_3',
-        senderId: '2',
-        content: 'Hey everyone! Welcome to our Flutter dev group 🚀',
-        timestamp: DateTime.now().subtract(const Duration(hours: 8)),
-        isRead: true,
-      ),
-      Message(
-        id: 'msg_3_2',
-        conversationId: 'conv_3',
-        senderId: '3',
-        content: 'Thanks for creating this group!',
-        timestamp: DateTime.now().subtract(const Duration(hours: 7)),
-        isRead: true,
-      ),
-      Message(
-        id: 'msg_3_3',
-        conversationId: 'conv_3',
-        senderId: '1',
-        content: 'Great to be here! Looking forward to collaborating.',
-        timestamp: DateTime.now().subtract(const Duration(hours: 6)),
-        isRead: true,
-      ),
-      Message(
-        id: 'msg_3_4',
-        conversationId: 'conv_3',
-        senderId: '4',
-        content: 'Anyone available for code review?',
-        timestamp: DateTime.now().subtract(const Duration(hours: 5)),
-        isRead: false,
-      ),
-    ],
-  };
-
-  Future<void> loadConversations() async {
+  // Start listening to user conversations
+  void startListeningToConversations(String userId) {
+    print('ChatProvider: Starting conversations stream for user: $userId');
+    
     _isLoading = true;
     notifyListeners();
-
-    // Simulate API call delay
-    await Future.delayed(const Duration(seconds: 1));
-
-    _conversations.clear();
-    _conversations.addAll(_mockConversations);
-    _conversations.sort((a, b) => b.lastActivity.compareTo(a.lastActivity));
-
-    _isLoading = false;
-    notifyListeners();
-  }
-
-  Future<List<Message>> getMessages(String conversationId) async {
-    if (_messages.containsKey(conversationId)) {
-      return _messages[conversationId]!;
-    }
-
-    // Simulate API call delay
-    await Future.delayed(const Duration(milliseconds: 500));
-
-    final messages = _mockMessages[conversationId] ?? [];
-    _messages[conversationId] = List.from(messages);
     
-    return _messages[conversationId]!;
+    // Cancel existing subscription
+    _conversationsSubscription?.cancel();
+    
+    try {
+      _conversationsSubscription = _chatService.getUserConversations(userId).listen(
+        (conversations) {
+          print('ChatProvider: Received ${conversations.length} conversations');
+          _conversations = conversations;
+          _isLoading = false;
+          notifyListeners();
+        },
+        onError: (error) {
+          print('ChatProvider: Error in conversations stream: $error');
+          _isLoading = false;
+          notifyListeners();
+        },
+      );
+    } catch (e) {
+      print('ChatProvider: Error starting conversations stream: $e');
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
-  Future<void> sendMessage(String conversationId, String content) async {
+  // Stop listening to conversations
+  void stopListeningToConversations() {
+    print('ChatProvider: Stopping conversations stream');
+    _conversationsSubscription?.cancel();
+    _conversationsSubscription = null;
+  }
+
+  // Start listening to messages for a conversation
+  void startListeningToMessages(String conversationId) {
+    print('ChatProvider: Starting messages stream for conversation: $conversationId');
+    
+    // Cancel existing subscription for this conversation
+    _messageSubscriptions[conversationId]?.cancel();
+    
+    try {
+      _messageSubscriptions[conversationId] = _chatService.getMessages(conversationId).listen(
+        (messages) {
+          print('ChatProvider: Received ${messages.length} messages for conversation: $conversationId');
+          
+          // Get current messages and separate temporary ones (those with timestamp-based IDs)
+          final currentMessages = _messages[conversationId] ?? [];
+          final tempMessages = currentMessages.where((msg) => 
+            msg.id.length > 10 && int.tryParse(msg.id) != null
+          ).toList();
+          
+          // Combine Firebase messages with temporary messages
+          final allMessages = [...messages.reversed.toList(), ...tempMessages];
+          
+          // Sort by timestamp to maintain order
+          allMessages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+          
+          _messages[conversationId] = allMessages;
+          notifyListeners();
+        },
+        onError: (error) {
+          print('ChatProvider: Error in messages stream for conversation $conversationId: $error');
+        },
+      );
+    } catch (e) {
+      print('ChatProvider: Error starting messages stream for conversation $conversationId: $e');
+    }
+  }
+
+  // Stop listening to messages for a conversation
+  void stopListeningToMessages(String conversationId) {
+    print('ChatProvider: Stopping messages stream for conversation: $conversationId');
+    _messageSubscriptions[conversationId]?.cancel();
+    _messageSubscriptions.remove(conversationId);
+  }
+
+  // Get messages for a conversation
+  List<Message> getMessages(String conversationId) {
+    return _messages[conversationId] ?? [];
+  }
+
+  // Send message
+  Future<void> sendMessage(String conversationId, String content, String senderId, String receiverId) async {
     if (content.trim().isEmpty) return;
 
-    final newMessage = Message(
-      id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+    // Create a temporary message for immediate UI update
+    final tempMessage = Message(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
       conversationId: conversationId,
-      senderId: '1', // Current user ID
+      senderId: senderId,
       content: content.trim(),
+      type: MessageType.text,
       timestamp: DateTime.now(),
-      isRead: true,
+      isRead: false,
     );
 
-    // Add to messages list
-    if (!_messages.containsKey(conversationId)) {
+    // Add to local messages immediately for instant UI update
+    if (_messages[conversationId] == null) {
       _messages[conversationId] = [];
     }
-    _messages[conversationId]!.add(newMessage);
+    _messages[conversationId]!.add(tempMessage);
+    notifyListeners();
 
-    // Update conversation last message and activity
-    final conversationIndex = _conversations.indexWhere((c) => c.id == conversationId);
-    if (conversationIndex != -1) {
-      _conversations[conversationIndex] = _conversations[conversationIndex].copyWith(
-        lastMessage: newMessage,
-        lastActivity: DateTime.now(),
+    try {
+      final messageId = await _chatService.sendMessage(
+        conversationId: conversationId,
+        senderId: senderId,
+        receiverId: receiverId,
+        content: content.trim(),
       );
       
-      // Sort conversations by last activity
-      _conversations.sort((a, b) => b.lastActivity.compareTo(a.lastActivity));
+      print('ChatProvider: Message sent successfully with ID: $messageId');
+      
+      // Remove the temporary message after successful send
+      // The real message will come through the Firebase stream
+      _messages[conversationId]?.removeWhere((msg) => msg.id == tempMessage.id);
+      notifyListeners();
+      
+    } catch (e) {
+      // Remove the temporary message if sending failed
+      _messages[conversationId]?.remove(tempMessage);
+      notifyListeners();
+      print('ChatProvider: Error sending message: $e');
+      throw Exception('Failed to send message');
     }
-
-    notifyListeners();
-
-    // Simulate API call
-    await Future.delayed(const Duration(milliseconds: 300));
   }
 
-  Future<void> markAsRead(String conversationId) async {
-    // Mark all messages in conversation as read
-    if (_messages.containsKey(conversationId)) {
-      for (int i = 0; i < _messages[conversationId]!.length; i++) {
-        _messages[conversationId]![i] = _messages[conversationId]![i].copyWith(isRead: true);
-      }
-    }
-
-    // Update conversation unread count
-    final conversationIndex = _conversations.indexWhere((c) => c.id == conversationId);
-    if (conversationIndex != -1) {
-      _conversations[conversationIndex] = _conversations[conversationIndex].copyWith(
-        unreadCount: 0,
+  // Create or get conversation
+  Future<String> createOrGetConversation(String userId1, String userId2) async {
+    try {
+      return await _chatService.createOrGetConversation(
+        userId1: userId1,
+        userId2: userId2,
       );
+    } catch (e) {
+      print('ChatProvider: Error creating conversation: $e');
+      throw Exception('Failed to create conversation');
     }
+  }
 
-    notifyListeners();
-
-    // Simulate API call
-    await Future.delayed(const Duration(milliseconds: 200));
+  // Mark messages as read
+  Future<void> markAsRead(String conversationId, String userId) async {
+    try {
+      await _chatService.markMessagesAsRead(conversationId, userId);
+      print('ChatProvider: Messages marked as read');
+    } catch (e) {
+      print('ChatProvider: Error marking messages as read: $e');
+    }
   }
 
   void setActiveConversation(String? conversationId) {
     _activeConversationId = conversationId;
-    if (conversationId != null) {
-      markAsRead(conversationId);
-    }
     notifyListeners();
+
+    if (conversationId != null) {
+      startListeningToMessages(conversationId);
+    }
   }
 
   Conversation? getConversationById(String conversationId) {
@@ -282,42 +193,14 @@ class ChatProvider with ChangeNotifier {
     return _conversations.fold(0, (total, conversation) => total + conversation.unreadCount);
   }
 
-  Future<String?> createConversation(List<String> participantIds, {String? groupName}) async {
-    _isLoading = true;
-    notifyListeners();
-
-    // Simulate API call delay
-    await Future.delayed(const Duration(seconds: 1));
-
-    final conversationId = 'conv_${DateTime.now().millisecondsSinceEpoch}';
-    
-    final newConversation = Conversation(
-      id: conversationId,
-      participantIds: participantIds,
-      name: groupName ?? '',
-      type: participantIds.length > 2 ? ConversationType.group : ConversationType.direct,
-      lastActivity: DateTime.now(),
-      participantNames: {
-        for (String id in participantIds) id: 'User $id'
-      },
-      participantAvatars: {
-        for (String id in participantIds) id: null
-      },
-    );
-
-    _conversations.insert(0, newConversation);
-    _messages[conversationId] = [];
-
-    _isLoading = false;
-    notifyListeners();
-
-    return conversationId;
-  }
-
-  void clearMessages() {
-    _messages.clear();
-    _conversations.clear();
-    _activeConversationId = null;
-    notifyListeners();
+  @override
+  void dispose() {
+    // Cancel all subscriptions
+    _conversationsSubscription?.cancel();
+    for (var subscription in _messageSubscriptions.values) {
+      subscription?.cancel();
+    }
+    _messageSubscriptions.clear();
+    super.dispose();
   }
 }

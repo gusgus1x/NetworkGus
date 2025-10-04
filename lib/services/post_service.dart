@@ -86,7 +86,38 @@ class PostService {
     }
   }
 
-  // Get posts feed (posts from followed users)
+  // Get posts feed stream (real-time posts from followed users)
+  Stream<List<Post>> getFeedPostsStream(String currentUserId, {int limit = 20}) {
+    try {
+      // Get all posts with reasonable limit
+      return _postsCollection
+          .orderBy('createdAt', descending: true)
+          .limit(limit)
+          .snapshots()
+          .asyncMap((snapshot) async {
+        print('PostService: Stream received ${snapshot.docs.length} documents');
+        final List<Post> posts = [];
+
+        for (var doc in snapshot.docs) {
+          final post = Post.fromJson(doc.data() as Map<String, dynamic>);
+          
+          // Check if current user liked/bookmarked this post
+          final bool isLiked = await _isPostLikedByUser(post.id, currentUserId);
+          final bool isBookmarked = await _isPostBookmarkedByUser(post.id, currentUserId);
+          
+          posts.add(post.copyWith(isLiked: isLiked, isBookmarked: isBookmarked));
+        }
+
+        print('PostService: Returning ${posts.length} posts from stream');
+        return posts;
+      });
+    } catch (e) {
+      print('Get feed posts stream error: $e');
+      throw Exception('Failed to get feed posts stream');
+    }
+  }
+
+  // Keep the original method for compatibility
   Future<List<Post>> getFeedPosts(String currentUserId, {DocumentSnapshot? lastDocument, int limit = 10}) async {
     try {
       // Get following list
@@ -409,6 +440,39 @@ class PostService {
     } catch (e) {
       print('Add comment error: $e');
       throw Exception('Failed to add comment');
+    }
+  }
+
+  // Get post comments stream for real-time updates
+  Stream<List<Comment>> getPostCommentsStream(String postId, {int limit = 50}) {
+    try {
+      print('PostService: Setting up comments stream for post $postId');
+      
+      return _firestore
+          .collection('posts')
+          .doc(postId)
+          .collection('comments')
+          .orderBy('createdAt', descending: false)
+          .limit(limit)
+          .snapshots()
+          .map((snapshot) {
+        print('PostService: Stream received ${snapshot.docs.length} comment documents');
+        
+        final List<Comment> comments = [];
+        for (var doc in snapshot.docs) {
+          final data = doc.data();
+          // Only include top-level comments (no replyToCommentId)
+          if (data['replyToCommentId'] == null) {
+            comments.add(Comment.fromJson(data));
+          }
+        }
+
+        print('PostService: Stream returning ${comments.length} top-level comments');
+        return comments;
+      });
+    } catch (e) {
+      print('Get comments stream error: $e');
+      throw Exception('Failed to get comments stream');
     }
   }
 

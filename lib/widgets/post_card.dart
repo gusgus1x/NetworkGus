@@ -5,6 +5,7 @@ import '../providers/posts_provider.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/user_avatar.dart';
 import '../screens/post_detail_screen.dart';
+import '../screens/user_profile_screen.dart';
 
 class PostCard extends StatelessWidget {
   final Post post;
@@ -14,11 +15,20 @@ class PostCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: const BoxDecoration(
-        color: Color(0xFF1E1E1E),
-        border: Border(
-          bottom: BorderSide(color: Color(0xFF333333), width: 0.5),
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(
+          color: const Color(0xFF2A2A2A),
+          width: 1,
         ),
       ),
       child: Column(
@@ -29,31 +39,41 @@ class PostCard extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(1),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: post.isUserVerified 
-                        ? const LinearGradient(
-                            colors: [
-                              Color(0xFF833AB4),
-                              Color(0xFFE1306C),
-                              Color(0xFFFA7E1E),
-                            ],
-                          )
-                        : null,
-                    color: post.isUserVerified ? null : Colors.transparent,
-                  ),
+                GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => UserProfileScreen(userId: post.userId),
+                      ),
+                    );
+                  },
                   child: Container(
-                    padding: const EdgeInsets.all(2),
-                    decoration: const BoxDecoration(
+                    padding: const EdgeInsets.all(1),
+                    decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Color(0xFF1E1E1E),
+                      gradient: post.isUserVerified 
+                          ? const LinearGradient(
+                              colors: [
+                                Color(0xFF833AB4),
+                                Color(0xFFE1306C),
+                                Color(0xFFFA7E1E),
+                              ],
+                            )
+                          : null,
+                      color: post.isUserVerified ? null : Colors.transparent,
                     ),
-                    child: UserAvatar(
-                      imageUrl: post.userProfileImageUrl,
-                      displayName: post.userDisplayName,
-                      radius: 16,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Color(0xFF1E1E1E),
+                      ),
+                      child: UserAvatar(
+                        imageUrl: post.userProfileImageUrl,
+                        displayName: post.userDisplayName,
+                        radius: 16,
+                      ),
                     ),
                   ),
                 ),
@@ -64,12 +84,23 @@ class PostCard extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          Text(
-                            post.username,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                              color: Colors.white,
+                          GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => UserProfileScreen(userId: post.userId),
+                                ),
+                              );
+                            },
+                            child: Text(
+                              post.username,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                color: Colors.white,
+                                letterSpacing: 0.3,
+                              ),
                             ),
                           ),
                           if (post.isUserVerified) ...[
@@ -93,51 +124,75 @@ class PostCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                PopupMenuButton<String>(
-                  icon: const Icon(Icons.more_vert, size: 20, color: Colors.white),
-                  onSelected: (value) {
-                    if (value == 'delete') {
-                      _showDeleteConfirmation(context);
-                    } else if (value == 'report') {
-                      _showReportDialog(context);
-                    } else if (value == 'hide') {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Post hidden')),
-                      );
-                    }
+                Consumer<AuthProvider>(
+                  builder: (context, authProvider, child) {
+                    final currentUser = authProvider.currentUser;
+                    final isOwner = currentUser?.id == post.userId;
+                    
+                    return PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_vert, size: 20, color: Colors.white),
+                      onSelected: (value) {
+                        if (value == 'delete') {
+                          _showDeleteConfirmation(context);
+                        } else if (value == 'report') {
+                          _showReportDialog(context);
+                        } else if (value == 'hide') {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Post hidden')),
+                          );
+                        }
+                      },
+                      itemBuilder: (context) {
+                        List<PopupMenuEntry<String>> items = [];
+                        
+                        // Always show hide option
+                        items.add(
+                          const PopupMenuItem(
+                            value: 'hide',
+                            child: Row(
+                              children: [
+                                Icon(Icons.visibility_off, size: 18),
+                                SizedBox(width: 8),
+                                Text('Hide'),
+                              ],
+                            ),
+                          ),
+                        );
+                        
+                        if (isOwner) {
+                          // Show delete option only for post owner
+                          items.add(
+                            const PopupMenuItem(
+                              value: 'delete',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.delete, size: 18, color: Colors.red),
+                                  SizedBox(width: 8),
+                                  Text('Delete', style: TextStyle(color: Colors.red)),
+                                ],
+                              ),
+                            ),
+                          );
+                        } else {
+                          // Show report option for other users' posts
+                          items.add(
+                            const PopupMenuItem(
+                              value: 'report',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.flag, size: 18),
+                                  SizedBox(width: 8),
+                                  Text('Report'),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
+                        
+                        return items;
+                      },
+                    );
                   },
-                  itemBuilder: (context) => [
-                    const PopupMenuItem(
-                      value: 'hide',
-                      child: Row(
-                        children: [
-                          Icon(Icons.visibility_off, size: 18),
-                          SizedBox(width: 8),
-                          Text('Hide'),
-                        ],
-                      ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'report',
-                      child: Row(
-                        children: [
-                          Icon(Icons.flag, size: 18),
-                          SizedBox(width: 8),
-                          Text('Report'),
-                        ],
-                      ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'delete',
-                      child: Row(
-                        children: [
-                          Icon(Icons.delete, size: 18, color: Colors.red),
-                          SizedBox(width: 8),
-                          Text('Delete', style: TextStyle(color: Colors.red)),
-                        ],
-                      ),
-                    ),
-                  ],
                 ),
               ],
             ),
@@ -146,10 +201,19 @@ class PostCard extends StatelessWidget {
           // Post images
           if (post.imageUrls != null && post.imageUrls!.isNotEmpty)
             Container(
+              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               height: 300,
               width: double.infinity,
-              decoration: const BoxDecoration(
-                color: Color(0xFF2A2A2A),
+              decoration: BoxDecoration(
+                color: const Color(0xFF2A2A2A),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.2),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
               child: post.imageUrls!.length == 1
                   ? Container(
@@ -214,65 +278,93 @@ class PostCard extends StatelessWidget {
 
           // Action buttons
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               children: [
-                GestureDetector(
-                  onTap: () {
-                    final currentUserId = context.read<AuthProvider>().currentUser?.id;
-                    if (currentUserId != null) {
-                      context.read<PostsProvider>().likePost(post.id, currentUserId);
-                    }
-                  },
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 200),
-                    child: Icon(
-                      post.isLiked ? Icons.favorite : Icons.favorite_border,
-                      color: post.isLiked ? Colors.red : Colors.white,
-                      size: 26,
-                      key: ValueKey(post.isLiked),
+                Container(
+                  decoration: BoxDecoration(
+                    color: post.isLiked 
+                        ? Colors.red.withOpacity(0.1)
+                        : const Color(0xFF2A2A2A).withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: IconButton(
+                    onPressed: () {
+                      final currentUserId = context.read<AuthProvider>().currentUser?.id;
+                      if (currentUserId != null) {
+                        context.read<PostsProvider>().likePost(post.id, currentUserId);
+                      }
+                    },
+                    icon: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      child: Icon(
+                        post.isLiked ? Icons.favorite : Icons.favorite_border,
+                        color: post.isLiked ? Colors.red : Colors.white,
+                        size: 24,
+                        key: ValueKey(post.isLiked),
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(width: 16),
-                GestureDetector(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => PostDetailScreen(postId: post.id),
-                      ),
-                    );
-                  },
-                  child: const Icon(
-                    Icons.chat_bubble_outline,
-                    color: Colors.white,
-                    size: 24,
+                const SizedBox(width: 8),
+                Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2A2A2A).withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: IconButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => PostDetailScreen(postId: post.id),
+                        ),
+                      );
+                    },
+                    icon: const Icon(
+                      Icons.chat_bubble_outline,
+                      color: Colors.white,
+                      size: 22,
+                    ),
                   ),
                 ),
-                const SizedBox(width: 16),
-                GestureDetector(
-                  onTap: () {
-                    _showShareDialog(context);
-                  },
-                  child: const Icon(
-                    Icons.send,
-                    color: Colors.white,
-                    size: 24,
+                const SizedBox(width: 8),
+                Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2A2A2A).withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: IconButton(
+                    onPressed: () {
+                      _showShareDialog(context);
+                    },
+                    icon: const Icon(
+                      Icons.send,
+                      color: Colors.white,
+                      size: 22,
+                    ),
                   ),
                 ),
                 const Spacer(),
-                GestureDetector(
-                  onTap: () {
-                    final currentUserId = context.read<AuthProvider>().currentUser?.id;
-                    if (currentUserId != null) {
-                      context.read<PostsProvider>().bookmarkPost(post.id, currentUserId);
-                    }
-                  },
-                  child: Icon(
-                    post.isBookmarked ? Icons.bookmark : Icons.bookmark_border,
-                    color: Colors.white,
-                    size: 24,
+                Container(
+                  decoration: BoxDecoration(
+                    color: post.isBookmarked 
+                        ? const Color(0xFF6C5CE7).withOpacity(0.1)
+                        : const Color(0xFF2A2A2A).withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: IconButton(
+                    onPressed: () {
+                      final currentUserId = context.read<AuthProvider>().currentUser?.id;
+                      if (currentUserId != null) {
+                        context.read<PostsProvider>().bookmarkPost(post.id, currentUserId);
+                      }
+                    },
+                    icon: Icon(
+                      post.isBookmarked ? Icons.bookmark : Icons.bookmark_border,
+                      color: post.isBookmarked ? const Color(0xFF6C5CE7) : Colors.white,
+                      size: 22,
+                    ),
                   ),
                 ),
               ],
@@ -283,35 +375,65 @@ class PostCard extends StatelessWidget {
           if (post.likesCount > 0)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                post.likesCount == 1 
-                    ? '1 like' 
-                    : '${_formatNumber(post.likesCount)} likes',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                  color: Colors.white,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF6C5CE7), Color(0xFF74B9FF)],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Text(
+                  post.likesCount == 1 
+                      ? '1 like' 
+                      : '${_formatNumber(post.likesCount)} likes',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ),
 
           // Post content
           if (post.content.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F0F0F),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: const Color(0xFF2A2A2A),
+                  width: 1,
+                ),
+              ),
               child: RichText(
                 text: TextSpan(
                   style: const TextStyle(
-                    color: Colors.black,
-                    fontSize: 14,
-                    height: 1.3,
+                    color: Colors.white,
+                    fontSize: 15,
+                    height: 1.5,
+                    fontWeight: FontWeight.w400,
                   ),
                   children: [
                     TextSpan(
                       text: post.username,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF6C5CE7),
+                      ),
                     ),
-                    TextSpan(text: ' ${post.content}'),
+                    TextSpan(
+                      text: ' ${post.content}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -320,7 +442,7 @@ class PostCard extends StatelessWidget {
           // Comments preview
           if (post.commentsCount > 0)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               child: GestureDetector(
                 onTap: () {
                   Navigator.push(
@@ -330,13 +452,25 @@ class PostCard extends StatelessWidget {
                     ),
                   );
                 },
-                child: Text(
-                  post.commentsCount == 1 
-                      ? 'View 1 comment'
-                      : 'View all ${post.commentsCount} comments',
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontSize: 14,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF74B9FF).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: const Color(0xFF74B9FF).withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Text(
+                    post.commentsCount == 1 
+                        ? 'View 1 comment'
+                        : 'View all ${post.commentsCount} comments',
+                    style: const TextStyle(
+                      color: Color(0xFF74B9FF),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
               ),
@@ -344,32 +478,64 @@ class PostCard extends StatelessWidget {
 
           // Post timestamp
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: Text(
-              _formatTimestamp(post.createdAt).toUpperCase(),
-              style: TextStyle(
-                color: Colors.grey.shade600,
-                fontSize: 10,
-                fontWeight: FontWeight.w400,
-                letterSpacing: 0.2,
-              ),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.access_time,
+                  size: 12,
+                  color: Colors.grey.shade500,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  _formatTimestamp(post.createdAt).toUpperCase(),
+                  style: TextStyle(
+                    color: Colors.grey.shade500,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ],
             ),
           ),
 
           // Quick comment input
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: const BoxDecoration(
-              border: Border(
-                top: BorderSide(color: Color(0xFF333333), width: 0.5),
+            margin: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0F0F0F),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: const Color(0xFF2A2A2A),
+                width: 1,
               ),
             ),
             child: Row(
               children: [
-                UserAvatar(
-                  imageUrl: context.watch<AuthProvider>().currentUser?.profileImageUrl,
-                  displayName: context.watch<AuthProvider>().currentUser?.displayName ?? 'User',
-                  radius: 12,
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF6C5CE7), Color(0xFF74B9FF)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding: const EdgeInsets.all(1),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0F0F0F),
+                      borderRadius: BorderRadius.circular(11),
+                    ),
+                    padding: const EdgeInsets.all(1),
+                    child: UserAvatar(
+                      imageUrl: context.watch<AuthProvider>().currentUser?.profileImageUrl,
+                      displayName: context.watch<AuthProvider>().currentUser?.displayName ?? 'User',
+                      radius: 12,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -383,17 +549,21 @@ class PostCard extends StatelessWidget {
                       );
                     },
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                       decoration: BoxDecoration(
-                        color: Colors.transparent,
-                        border: Border.all(color: Color(0xFF333333), width: 1),
+                        color: const Color(0xFF1A1A1A),
                         borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: const Color(0xFF6C5CE7).withOpacity(0.3),
+                          width: 1,
+                        ),
                       ),
                       child: Text(
                         'Add a comment...',
                         style: TextStyle(
-                          color: Colors.grey.shade600,
+                          color: Colors.grey.shade400,
                           fontSize: 14,
+                          fontWeight: FontWeight.w400,
                         ),
                       ),
                     ),

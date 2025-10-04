@@ -12,6 +12,7 @@ class AuthProvider with ChangeNotifier {
   bool _isLoggedIn = false;
 
   User? get currentUser => _currentUser;
+  firebase_auth.User? get user => _firebaseAuth.currentUser;
   bool get isLoading => _isLoading;
   bool get isLoggedIn => _isLoggedIn;
 

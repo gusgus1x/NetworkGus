@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import '../models/post_model.dart';
 import '../models/comment_model.dart';
 import '../services/post_service.dart';
@@ -13,6 +14,10 @@ class PostsProvider with ChangeNotifier {
   // Comments state
   Map<String, List<Comment>> _postComments = {};
   Map<String, bool> _commentsLoading = {};
+  Map<String, StreamSubscription<List<Comment>>?> _commentSubscriptions = {};
+  
+  // Stream subscriptions
+  StreamSubscription<List<Post>>? _postsSubscription;
 
   List<Post> get posts => _posts;
   bool get isLoading => _isLoading;
@@ -22,8 +27,81 @@ class PostsProvider with ChangeNotifier {
   List<Comment> getCommentsForPost(String postId) => _postComments[postId] ?? [];
   bool isCommentsLoading(String postId) => _commentsLoading[postId] ?? false;
 
-  // Remove mock data - use Firebase instead
+  // Start listening to posts stream for real-time updates
+  void startListeningToPosts(String currentUserId) {
+    print('PostsProvider: Starting posts stream for user: $currentUserId');
+    
+    _isLoading = true;
+    notifyListeners();
+    
+    // Cancel existing subscription
+    _postsSubscription?.cancel();
+    
+    try {
+      _postsSubscription = _postService.getFeedPostsStream(currentUserId).listen(
+        (posts) {
+          print('PostsProvider: Received ${posts.length} posts from stream');
+          
+          // Only update if posts actually changed to prevent unnecessary UI updates
+          if (!_arePostsEqual(_posts, posts)) {
+            _posts = posts;
+            _isLoading = false;
+            _hasMore = posts.length >= 20; // Re-enable pagination if we have full limit
+            notifyListeners();
+          } else if (_isLoading) {
+            // Just turn off loading if posts are the same
+            _isLoading = false;
+            notifyListeners();
+          }
+        },
+        onError: (error) {
+          print('PostsProvider: Error in posts stream: $error');
+          _isLoading = false;
+          notifyListeners();
+        },
+      );
+    } catch (e) {
+      print('PostsProvider: Error starting posts stream: $e');
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
 
+  // Helper method to compare posts arrays - now handles different lengths properly
+  bool _arePostsEqual(List<Post> oldPosts, List<Post> newPosts) {
+    if (oldPosts.length != newPosts.length) {
+      print('PostsProvider: Posts count changed: ${oldPosts.length} -> ${newPosts.length}');
+      return false;
+    }
+    
+    // Check if posts have same IDs in same order
+    for (int i = 0; i < oldPosts.length; i++) {
+      if (oldPosts[i].id != newPosts[i].id) {
+        print('PostsProvider: Post order changed at index $i');
+        return false;
+      }
+      
+      // Check for important changes that should trigger UI update
+      if (oldPosts[i].likesCount != newPosts[i].likesCount ||
+          oldPosts[i].commentsCount != newPosts[i].commentsCount ||
+          oldPosts[i].isLiked != newPosts[i].isLiked ||
+          oldPosts[i].isBookmarked != newPosts[i].isBookmarked) {
+        print('PostsProvider: Post ${oldPosts[i].id} stats changed');
+        return false;
+      }
+    }
+    
+    return true;
+  }
+
+  // Stop listening to posts stream
+  void stopListeningToPosts() {
+    print('PostsProvider: Stopping posts stream');
+    _postsSubscription?.cancel();
+    _postsSubscription = null;
+  }
+
+  // Legacy method for backward compatibility - now prevents duplicates
   Future<void> fetchPosts({bool refresh = false, String? currentUserId}) async {
     print('PostsProvider: fetchPosts called with userId: $currentUserId'); // Debug
     
@@ -64,7 +142,17 @@ class PostsProvider with ChangeNotifier {
         if (newPosts.isEmpty) {
           _hasMore = false;
         } else {
-          _posts.addAll(newPosts);
+          // Filter out duplicate posts by ID
+          final existingIds = _posts.map((p) => p.id).toSet();
+          final uniqueNewPosts = newPosts.where((post) => !existingIds.contains(post.id)).toList();
+          
+          if (uniqueNewPosts.isNotEmpty) {
+            _posts.addAll(uniqueNewPosts);
+            print('PostsProvider: Added ${uniqueNewPosts.length} unique posts');
+          } else {
+            print('PostsProvider: No new unique posts to add');
+            _hasMore = false; // Stop trying if no new posts
+          }
         }
       } else {
         print('PostsProvider: No user logged in'); // Debug
@@ -194,7 +282,45 @@ class PostsProvider with ChangeNotifier {
     }
   }
 
-  // Comment functionality
+  // Start listening to comments stream for real-time updates
+  void startListeningToComments(String postId) {
+    print('PostsProvider: Starting comments stream for post: $postId');
+    
+    // Cancel existing subscription for this post
+    _commentSubscriptions[postId]?.cancel();
+    
+    _commentsLoading[postId] = true;
+    notifyListeners();
+    
+    try {
+      _commentSubscriptions[postId] = _postService.getPostCommentsStream(postId).listen(
+        (comments) {
+          print('PostsProvider: Received ${comments.length} comments from stream for post: $postId');
+          _postComments[postId] = comments;
+          _commentsLoading[postId] = false;
+          notifyListeners();
+        },
+        onError: (error) {
+          print('PostsProvider: Error in comments stream for post $postId: $error');
+          _commentsLoading[postId] = false;
+          notifyListeners();
+        },
+      );
+    } catch (e) {
+      print('PostsProvider: Error starting comments stream for post $postId: $e');
+      _commentsLoading[postId] = false;
+      notifyListeners();
+    }
+  }
+
+  // Stop listening to comments stream for a specific post
+  void stopListeningToComments(String postId) {
+    print('PostsProvider: Stopping comments stream for post: $postId');
+    _commentSubscriptions[postId]?.cancel();
+    _commentSubscriptions.remove(postId);
+  }
+
+  // Comment functionality (legacy method for compatibility)
   Future<void> loadCommentsForPost(String postId) async {
     print('PostsProvider: Loading comments for post: $postId');
     if (_commentsLoading[postId] == true) {
@@ -293,6 +419,28 @@ class PostsProvider with ChangeNotifier {
   void clearCommentsForPost(String postId) {
     _postComments.remove(postId);
     _commentsLoading.remove(postId);
+    stopListeningToComments(postId);
     notifyListeners();
+  }
+
+  // Get posts by user ID
+  Future<List<Post>> getUserPosts(String userId) async {
+    try {
+      return await _postService.getUserPosts(userId);
+    } catch (e) {
+      print('PostsProvider: Error getting user posts: $e');
+      throw Exception('Failed to get user posts');
+    }
+  }
+
+  @override
+  void dispose() {
+    // Cancel all subscriptions
+    _postsSubscription?.cancel();
+    for (var subscription in _commentSubscriptions.values) {
+      subscription?.cancel();
+    }
+    _commentSubscriptions.clear();
+    super.dispose();
   }
 }

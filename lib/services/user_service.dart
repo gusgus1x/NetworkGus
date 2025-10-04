@@ -5,12 +5,82 @@ class UserService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final CollectionReference _usersCollection = FirebaseFirestore.instance.collection('users');
 
+  // Create mock users for testing
+  Future<void> createMockUsers() async {
+    try {
+      final mockUsers = [
+        {
+          'username': 'johndoe',
+          'email': 'john@example.com',
+          'displayName': 'John Doe',
+          'profileImageUrl': null,
+          'bio': 'Software developer from Bangkok',
+          'followersCount': 125,
+          'followingCount': 89,
+          'postsCount': 15,
+          'createdAt': FieldValue.serverTimestamp(),
+          'isVerified': false,
+        },
+        {
+          'username': 'jansmith',
+          'email': 'jane@example.com',
+          'displayName': 'Jane Smith',
+          'profileImageUrl': null,
+          'bio': 'UI/UX Designer who loves creating beautiful interfaces',
+          'followersCount': 234,
+          'followingCount': 156,
+          'postsCount': 28,
+          'createdAt': FieldValue.serverTimestamp(),
+          'isVerified': true,
+        },
+        {
+          'username': 'alexcoder',
+          'email': 'alex@example.com',
+          'displayName': 'Alex Johnson',
+          'profileImageUrl': null,
+          'bio': 'Full-stack developer and tech enthusiast',
+          'followersCount': 89,
+          'followingCount': 67,
+          'postsCount': 12,
+          'createdAt': FieldValue.serverTimestamp(),
+          'isVerified': false,
+        },
+        {
+          'username': 'sarahdev',
+          'email': 'sarah@example.com',
+          'displayName': 'Sarah Wilson',
+          'profileImageUrl': null,
+          'bio': 'Mobile app developer specializing in Flutter',
+          'followersCount': 167,
+          'followingCount': 98,
+          'postsCount': 22,
+          'createdAt': FieldValue.serverTimestamp(),
+          'isVerified': false,
+        },
+      ];
+
+      final batch = _firestore.batch();
+      for (int i = 0; i < mockUsers.length; i++) {
+        final docRef = _usersCollection.doc('user${i + 1}');
+        mockUsers[i]['id'] = 'user${i + 1}';
+        batch.set(docRef, mockUsers[i]);
+      }
+      
+      await batch.commit();
+      print('Mock users created successfully');
+    } catch (e) {
+      print('Error creating mock users: $e');
+    }
+  }
+
   // Get user by ID
   Future<User?> getUserById(String userId) async {
     try {
       final DocumentSnapshot doc = await _usersCollection.doc(userId).get();
       if (doc.exists) {
-        return User.fromMap(doc.data() as Map<String, dynamic>);
+        final data = doc.data() as Map<String, dynamic>;
+        data['id'] = doc.id; // Ensure id is set from document ID
+        return User.fromMap(data);
       }
       return null;
     } catch (e) {
@@ -50,7 +120,14 @@ class UserService {
           .get();
 
       for (var doc in usernameQuery.docs) {
-        users.add(User.fromMap(doc.data() as Map<String, dynamic>));
+        try {
+          final data = doc.data() as Map<String, dynamic>;
+          data['id'] = doc.id; // Ensure id is set from document ID
+          users.add(User.fromMap(data));
+        } catch (e) {
+          print('Error parsing user document ${doc.id}: $e');
+          continue;
+        }
       }
 
       // Search by display name
@@ -61,10 +138,17 @@ class UserService {
           .get();
 
       for (var doc in displayNameQuery.docs) {
-        final user = User.fromMap(doc.data() as Map<String, dynamic>);
-        // Avoid duplicates
-        if (!users.any((u) => u.id == user.id)) {
-          users.add(user);
+        try {
+          final data = doc.data() as Map<String, dynamic>;
+          data['id'] = doc.id; // Ensure id is set from document ID
+          final user = User.fromMap(data);
+          // Avoid duplicates
+          if (!users.any((u) => u.id == user.id)) {
+            users.add(user);
+          }
+        } catch (e) {
+          print('Error parsing user document ${doc.id}: $e');
+          continue;
         }
       }
 
@@ -334,6 +418,51 @@ class UserService {
     } catch (e) {
       print('Check blocked error: $e');
       return false;
+    }
+  }
+
+  // Get all users (for chat list)
+  Future<List<User>> getAllUsers({int limit = 50}) async {
+    try {
+      final QuerySnapshot query = await _usersCollection
+          .orderBy('displayName')
+          .limit(limit)
+          .get();
+
+      final List<User> users = [];
+      for (var doc in query.docs) {
+        try {
+          final data = doc.data() as Map<String, dynamic>;
+          data['id'] = doc.id; // Ensure id is set from document ID
+          users.add(User.fromMap(data));
+        } catch (e) {
+          print('Error parsing user document ${doc.id}: $e');
+          continue;
+        }
+      }
+
+      return users;
+    } catch (e) {
+      print('Get all users error: $e');
+      throw Exception('Failed to get users');
+    }
+  }
+
+  // Get users stream for real-time updates
+  Stream<List<User>> getUsersStream({int limit = 50}) {
+    try {
+      return _usersCollection
+          .orderBy('displayName')
+          .limit(limit)
+          .snapshots()
+          .map((snapshot) {
+        return snapshot.docs
+            .map((doc) => User.fromMap(doc.data() as Map<String, dynamic>))
+            .toList();
+      });
+    } catch (e) {
+      print('Get users stream error: $e');
+      throw Exception('Failed to get users stream');
     }
   }
 }

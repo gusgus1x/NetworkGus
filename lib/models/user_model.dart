@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class User {
   final String id;
   final String username;
@@ -36,9 +38,29 @@ class User {
       followersCount: json['followersCount'] ?? 0,
       followingCount: json['followingCount'] ?? 0,
       postsCount: json['postsCount'] ?? 0,
-      createdAt: DateTime.parse(json['createdAt']),
+      createdAt: _parseDateTime(json['createdAt']),
       isVerified: json['isVerified'] ?? false,
     );
+  }
+
+  static DateTime _parseDateTime(dynamic dateTime) {
+    if (dateTime == null) return DateTime.now();
+    if (dateTime is String) {
+      try {
+        return DateTime.parse(dateTime);
+      } catch (e) {
+        return DateTime.now();
+      }
+    }
+    if (dateTime is Timestamp) {
+      // Handle Firebase Timestamp
+      return dateTime.toDate();
+    }
+    if (dateTime.runtimeType.toString().contains('Timestamp')) {
+      // Handle Firebase Timestamp (fallback)
+      return (dateTime as dynamic).toDate();
+    }
+    return DateTime.now();
   }
 
   Map<String, dynamic> toJson() {

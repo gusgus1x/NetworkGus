@@ -1,11 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/user_provider.dart';
+import '../providers/auth_provider.dart';
+import '../providers/chat_provider.dart';
 import '../models/user_model.dart';
 import '../widgets/user_avatar.dart';
+import 'chat_screen.dart';
+import 'user_profile_screen.dart';
 
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({Key? key}) : super(key: key);
+  final bool isSelectionMode;
+  final Function(User)? onUserSelected;
+  
+  const SearchScreen({
+    Key? key, 
+    this.isSelectionMode = false,
+    this.onUserSelected,
+  }) : super(key: key);
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -14,12 +25,43 @@ class SearchScreen extends StatefulWidget {
 class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _searchController = TextEditingController();
   List<User> _searchResults = [];
+  List<User> _suggestedUsers = [];
   bool _isSearching = false;
+  bool _isLoadingSuggestions = true;
+  DateTime _lastSearchTime = DateTime.now();
+
+  @override
+  void initState() {
+    super.initState();
+    // Use post-frame callback to avoid setState during build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadSuggestedUsers();
+    });
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadSuggestedUsers() async {
+    try {
+      final userProvider = context.read<UserProvider>();
+      final suggestions = await userProvider.getSuggestedUsers();
+      if (mounted) {
+        setState(() {
+          _suggestedUsers = suggestions;
+          _isLoadingSuggestions = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingSuggestions = false;
+        });
+      }
+    }
   }
 
   Future<void> _performSearch(String query) async {
@@ -31,47 +73,95 @@ class _SearchScreenState extends State<SearchScreen> {
       return;
     }
 
+    // Debounce: wait 500ms before searching
+    final searchTime = DateTime.now();
+    _lastSearchTime = searchTime;
+    await Future.delayed(const Duration(milliseconds: 500));
+    
+    // Check if this is still the latest search
+    if (_lastSearchTime != searchTime) return;
+
     setState(() {
       _isSearching = true;
     });
 
-    final userProvider = context.read<UserProvider>();
-    final results = await userProvider.searchUsers(query);
-    
-    if (mounted) {
-      setState(() {
-        _searchResults = results;
-        _isSearching = false;
-      });
+    try {
+      final userProvider = context.read<UserProvider>();
+      final results = await userProvider.searchUsers(query);
+      
+      if (mounted && _lastSearchTime == searchTime) {
+        setState(() {
+          _searchResults = results;
+          _isSearching = false;
+        });
+      }
+    } catch (e) {
+      if (mounted && _lastSearchTime == searchTime) {
+        setState(() {
+          _isSearching = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Search failed: $e')),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
-        title: TextField(
-          controller: _searchController,
-          decoration: InputDecoration(
-            hintText: 'Search users...',
-            hintStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
-            border: InputBorder.none,
-            prefixIcon: const Icon(Icons.search, color: Colors.white),
-            suffixIcon: _searchController.text.isNotEmpty
-                ? IconButton(
-                    icon: const Icon(Icons.clear, color: Colors.white),
-                    onPressed: () {
-                      _searchController.clear();
-                      _performSearch('');
-                    },
-                  )
-                : null,
-          ),
-          style: const TextStyle(color: Colors.white),
-          onChanged: _performSearch,
-        ),
-        backgroundColor: Colors.blue.shade600,
+        backgroundColor: const Color(0xFF1A1A1A),
         elevation: 0,
+        title: Container(
+          height: 45,
+          decoration: BoxDecoration(
+            color: const Color(0xFF2D2D2D),
+            borderRadius: BorderRadius.circular(22.5),
+            border: Border.all(
+              color: const Color(0xFF6C5CE7).withOpacity(0.3),
+              width: 1,
+            ),
+          ),
+          child: TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: widget.isSelectionMode 
+                ? 'Search users to chat with...'
+                : 'Search by name or username...',
+              hintStyle: TextStyle(
+                color: Colors.white.withOpacity(0.6),
+                fontSize: 16,
+              ),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              prefixIcon: Icon(
+                Icons.search,
+                color: Colors.white.withOpacity(0.6),
+                size: 22,
+              ),
+              suffixIcon: _searchController.text.isNotEmpty
+                  ? IconButton(
+                      icon: Icon(
+                        Icons.clear,
+                        color: Colors.white.withOpacity(0.6),
+                        size: 20,
+                      ),
+                      onPressed: () {
+                        _searchController.clear();
+                        _performSearch('');
+                      },
+                    )
+                  : null,
+            ),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+            ),
+            onChanged: _performSearch,
+          ),
+        ),
       ),
       body: Consumer<UserProvider>(
         builder: (context, userProvider, child) {
@@ -112,36 +202,68 @@ class _SearchScreenState extends State<SearchScreen> {
               },
             );
           } else {
-            // Empty search state
-            return const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.search,
-                    size: 64,
-                    color: Colors.grey,
-                  ),
-                  SizedBox(height: 16),
-                  Text(
-                    'Search for people',
+            // Show suggested users when not searching
+            if (_isLoadingSuggestions) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            
+            if (_suggestedUsers.isEmpty) {
+              return const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.search,
+                      size: 64,
+                      color: Colors.grey,
+                    ),
+                    SizedBox(height: 16),
+                    Text(
+                      'Search for people',
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: Colors.grey,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'Find friends and discover new people.',
+                      style: TextStyle(
+                        color: Colors.grey,
+                        fontSize: 14,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    'Suggested for you',
                     style: TextStyle(
                       fontSize: 18,
-                      color: Colors.grey,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey.shade800,
                     ),
                   ),
-                  SizedBox(height: 8),
-                  Text(
-                    'Find friends and discover new people.',
-                    style: TextStyle(
-                      color: Colors.grey,
-                      fontSize: 14,
-                    ),
-                    textAlign: TextAlign.center,
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: _suggestedUsers.length,
+                    itemBuilder: (context, index) {
+                      final user = _suggestedUsers[index];
+                      return _buildUserTile(user);
+                    },
                   ),
-                ],
-              ),
+                ),
+              ],
             );
           }
         },
@@ -149,7 +271,7 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  Widget _buildUserTile(User user, {bool showFollowButton = false}) {
+  Widget _buildUserTile(User user) {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: ListTile(
@@ -160,9 +282,12 @@ class _SearchScreenState extends State<SearchScreen> {
         ),
         title: Row(
           children: [
-            Text(
-              user.displayName,
-              style: const TextStyle(fontWeight: FontWeight.bold),
+            Expanded(
+              child: Text(
+                user.displayName,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
             if (user.isVerified) ...[
               const SizedBox(width: 4),
@@ -179,12 +304,16 @@ class _SearchScreenState extends State<SearchScreen> {
           children: [
             Text('@${user.username}'),
             if (user.bio != null)
-              Text(
-                user.bio!,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12),
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  user.bio!,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12),
+                ),
               ),
+            const SizedBox(height: 4),
             Text(
               '${user.followersCount} followers',
               style: TextStyle(
@@ -194,33 +323,96 @@ class _SearchScreenState extends State<SearchScreen> {
             ),
           ],
         ),
-        trailing: showFollowButton
-            ? OutlinedButton(
-                onPressed: () {
-                  // TODO: Implement follow functionality
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Following @${user.username}'),
-                      duration: const Duration(seconds: 1),
-                    ),
-                  );
-                },
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.blue.shade600,
-                  side: BorderSide(color: Colors.blue.shade600),
+        trailing: widget.isSelectionMode 
+          ? const Icon(Icons.arrow_forward_ios, size: 16)
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Chat button
+                IconButton(
+                  icon: const Icon(Icons.chat_bubble_outline),
+                  onPressed: () => _startChat(user),
+                  tooltip: 'Chat',
+                  iconSize: 20,
                 ),
-                child: const Text('Follow'),
-              )
-            : null,
-        onTap: () {
-          // TODO: Navigate to user profile
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Viewing ${user.displayName}\'s profile'),
-              duration: const Duration(seconds: 1),
+                // Profile button
+                IconButton(
+                  icon: const Icon(Icons.person_outline),
+                  onPressed: () => _viewProfile(user),
+                  tooltip: 'View Profile',
+                  iconSize: 20,
+                ),
+              ],
             ),
-          );
+        onTap: () {
+          if (widget.isSelectionMode && widget.onUserSelected != null) {
+            widget.onUserSelected!(user);
+          } else {
+            _viewProfile(user);
+          }
         },
+      ),
+    );
+  }
+
+  Future<void> _startChat(User user) async {
+    try {
+      final currentUser = context.read<AuthProvider>().currentUser;
+      if (currentUser == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please login to start chatting')),
+        );
+        return;
+      }
+
+      if (currentUser.id == user.id) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('You cannot chat with yourself')),
+        );
+        return;
+      }
+
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      // Create or get existing conversation
+      final conversationId = await context.read<ChatProvider>().createOrGetConversation(
+        currentUser.id,
+        user.id,
+      );
+
+      Navigator.of(context).pop(); // Close loading dialog
+
+      // Navigate to chat screen
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ChatScreen(
+            conversationId: conversationId,
+            conversationName: user.displayName,
+            targetUserId: user.id,
+          ),
+        ),
+      );
+    } catch (e) {
+      Navigator.of(context).pop(); // Close loading dialog if open
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to start chat: $e')),
+      );
+    }
+  }
+
+  void _viewProfile(User user) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => UserProfileScreen(userId: user.id),
       ),
     );
   }

@@ -82,16 +82,15 @@ class _LoginScreenState extends State<LoginScreen> {
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topRight,
-            end: Alignment.bottomLeft,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
             colors: [
-              Color(0xFF405DE6), // Instagram blue
-              Color(0xFF5851DB),
-              Color(0xFF833AB4), // Instagram purple
-              Color(0xFFC13584), // Instagram pink
-              Color(0xFFE1306C),
-              Color(0xFFFA7E1E), // Instagram orange
+              Color(0xFF0A0A0A),
+              Color(0xFF1A1A1A),
+              Color(0xFF2D2D2D),
+              Color(0xFF6C5CE7),
             ],
+            stops: [0.0, 0.3, 0.7, 1.0],
           ),
         ),
         child: SafeArea(
@@ -103,35 +102,51 @@ class _LoginScreenState extends State<LoginScreen> {
                 children: [
                   // Logo
                   Container(
-                    padding: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF6C5CE7), Color(0xFFA29BFE)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(24),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
+                          color: const Color(0xFF6C5CE7).withOpacity(0.3),
                           blurRadius: 20,
                           offset: const Offset(0, 10),
                         ),
                       ],
                     ),
-                    child: Icon(
-                      Icons.camera_alt,
-                      size: 60,
-                      color: Colors.grey.shade800,
+                    child: const Icon(
+                      Icons.camera_alt_outlined,
+                      size: 64,
+                      color: Colors.white,
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 24),
                   
                   // App Name
                   const Text(
                     'SocialNetwork',
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: 32,
-                      fontWeight: FontWeight.w300,
-                      letterSpacing: 2,
+                      fontSize: 36,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1,
                     ),
+                  ),
+                  const SizedBox(height: 8),
+                  
+                  // Subtitle
+                  Text(
+                    'Connect with friends and share your moments',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.7),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w400,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 40),
 
@@ -289,38 +304,6 @@ class _LoginScreenState extends State<LoginScreen> {
                             },
                           ),
                           const SizedBox(height: 20),
-
-                          // OR Divider
-                          Row(
-                            children: [
-                              Expanded(child: Divider(color: Colors.grey.shade300)),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 16),
-                                child: Text(
-                                  'OR',
-                                  style: TextStyle(
-                                    color: Colors.grey.shade600,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                              Expanded(child: Divider(color: Colors.grey.shade300)),
-                            ],
-                          ),
-                          const SizedBox(height: 20),
-
-                          // Social Login Buttons
-                          _buildSocialButton(
-                            'Continue with Google',
-                            Icons.g_mobiledata,
-                            Colors.red.shade400,
-                          ),
-                          const SizedBox(height: 12),
-                          _buildSocialButton(
-                            'Continue with Facebook',
-                            Icons.facebook,
-                            Colors.blue.shade600,
-                          ),
                         ],
                       ),
                     ),
@@ -411,32 +394,5 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildSocialButton(String text, IconData icon, Color color) {
-    return Container(
-      width: double.infinity,
-      height: 50,
-      child: OutlinedButton.icon(
-        onPressed: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('$text not implemented yet')),
-          );
-        },
-        icon: Icon(icon, color: color),
-        label: Text(
-          text,
-          style: TextStyle(
-            color: Colors.grey.shade700,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        style: OutlinedButton.styleFrom(
-          side: BorderSide(color: Colors.grey.shade300),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          backgroundColor: Colors.white,
-        ),
-      ),
-    );
-  }
+
 }

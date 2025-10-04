@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/conversation_model.dart';
 import '../models/message_model.dart';
+import '../providers/user_provider.dart';
 import 'user_avatar.dart';
 
-class ConversationTile extends StatelessWidget {
+class ConversationTile extends StatefulWidget {
   final Conversation conversation;
   final String currentUserId;
   final VoidCallback onTap;
@@ -18,10 +20,65 @@ class ConversationTile extends StatelessWidget {
   }) : super(key: key);
 
   @override
+  State<ConversationTile> createState() => _ConversationTileState();
+}
+
+class _ConversationTileState extends State<ConversationTile> {
+  String? _displayName;
+  String? _displayImage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    if (widget.conversation.type == ConversationType.group) {
+      setState(() {
+        _displayName = widget.conversation.name.isNotEmpty 
+            ? widget.conversation.name 
+            : 'Group Chat';
+        _displayImage = widget.conversation.imageUrl;
+      });
+      return;
+    }
+
+    // For direct messages, get the other participant's info
+    final otherParticipantId = widget.conversation.participantIds.firstWhere(
+      (id) => id != widget.currentUserId,
+      orElse: () => widget.currentUserId,
+    );
+
+    // First try to get from conversation data
+    String? name = widget.conversation.participantNames[otherParticipantId];
+    String? image = widget.conversation.participantAvatars[otherParticipantId];
+
+    // If not available, fetch from UserProvider
+    if (name == null || name.isEmpty || name == 'Unknown User') {
+      try {
+        final userProvider = context.read<UserProvider>();
+        final user = await userProvider.getUserById(otherParticipantId);
+        name = user?.displayName ?? 'User ${otherParticipantId.substring(0, 8)}...';
+        image = user?.profileImageUrl;
+      } catch (e) {
+        name = 'User ${otherParticipantId.substring(0, 8)}...';
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _displayName = name;
+        _displayImage = image;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final displayName = conversation.getDisplayName(currentUserId);
-    final displayImage = conversation.getDisplayImage(currentUserId);
-    final lastMessage = conversation.lastMessage;
+    final displayName = _displayName ?? 'Loading...';
+    final displayImage = _displayImage;
+    final lastMessage = widget.conversation.lastMessage;
     
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -32,7 +89,7 @@ class ConversationTile extends StatelessWidget {
             displayName: displayName,
             radius: 28,
           ),
-          if (conversation.unreadCount > 0)
+          if (widget.conversation.unreadCount > 0)
             Positioned(
               right: 0,
               top: 0,
@@ -48,9 +105,9 @@ class ConversationTile extends StatelessWidget {
                 ),
                 child: Center(
                   child: Text(
-                    conversation.unreadCount > 99 
+                    widget.conversation.unreadCount > 99 
                         ? '99+' 
-                        : conversation.unreadCount.toString(),
+                        : widget.conversation.unreadCount.toString(),
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 12,
@@ -68,7 +125,7 @@ class ConversationTile extends StatelessWidget {
             child: Text(
               displayName,
               style: TextStyle(
-                fontWeight: conversation.unreadCount > 0 
+                fontWeight: widget.conversation.unreadCount > 0 
                     ? FontWeight.bold 
                     : FontWeight.normal,
                 fontSize: 16,
@@ -77,13 +134,13 @@ class ConversationTile extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          if (conversation.isPinned)
+          if (widget.conversation.isPinned)
             Icon(
               Icons.push_pin,
               size: 16,
               color: Colors.grey.shade600,
             ),
-          if (conversation.isMuted)
+          if (widget.conversation.isMuted)
             Padding(
               padding: const EdgeInsets.only(left: 4),
               child: Icon(
@@ -101,7 +158,7 @@ class ConversationTile extends StatelessWidget {
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    if (lastMessage.senderId == currentUserId)
+                    if (lastMessage.senderId == widget.currentUserId)
                       Icon(
                         lastMessage.isRead ? Icons.done_all : Icons.done,
                         size: 16,
@@ -109,10 +166,10 @@ class ConversationTile extends StatelessWidget {
                             ? Colors.blue.shade600 
                             : Colors.grey.shade600,
                       ),
-                    if (lastMessage.senderId == currentUserId)
+                    if (lastMessage.senderId == widget.currentUserId)
                       const SizedBox(width: 4),
-                    if (conversation.type == ConversationType.group && 
-                        lastMessage.senderId != currentUserId)
+                    if (widget.conversation.type == ConversationType.group && 
+                        lastMessage.senderId != widget.currentUserId)
                       Text(
                         '${_getSenderName(lastMessage.senderId)}: ',
                         style: TextStyle(
@@ -125,11 +182,11 @@ class ConversationTile extends StatelessWidget {
                       child: Text(
                         _getMessagePreview(lastMessage),
                         style: TextStyle(
-                          color: conversation.unreadCount > 0 
+                          color: widget.conversation.unreadCount > 0 
                               ? Colors.black87 
                               : Colors.grey.shade600,
                           fontSize: 14,
-                          fontWeight: conversation.unreadCount > 0 
+                          fontWeight: widget.conversation.unreadCount > 0 
                               ? FontWeight.w500 
                               : FontWeight.normal,
                         ),
@@ -153,29 +210,29 @@ class ConversationTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Text(
-            _formatTimestamp(conversation.lastActivity),
+            _formatTimestamp(widget.conversation.lastActivity),
             style: TextStyle(
-              color: conversation.unreadCount > 0 
+              color: widget.conversation.unreadCount > 0 
                   ? Colors.blue.shade600 
                   : Colors.grey.shade600,
               fontSize: 12,
-              fontWeight: conversation.unreadCount > 0 
+              fontWeight: widget.conversation.unreadCount > 0 
                   ? FontWeight.bold 
                   : FontWeight.normal,
             ),
           ),
         ],
       ),
-      onTap: onTap,
-      onLongPress: onLongPress,
+      onTap: widget.onTap,
+      onLongPress: widget.onLongPress,
     );
   }
 
   String _getSenderName(String senderId) {
-    return conversation.participantNames[senderId] ?? 'Unknown';
+    return widget.conversation.participantNames[senderId] ?? 'Unknown';
   }
 
-  String _getMessagePreview(lastMessage) {
+  String _getMessagePreview(Message lastMessage) {
     switch (lastMessage.type) {
       case MessageType.text:
         return lastMessage.content;
@@ -188,7 +245,6 @@ class ConversationTile extends StatelessWidget {
       case MessageType.system:
         return lastMessage.content;
     }
-    return lastMessage.content; // fallback
   }
 
   String _formatTimestamp(DateTime timestamp) {

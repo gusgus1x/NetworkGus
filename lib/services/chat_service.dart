@@ -21,15 +21,41 @@ class ChatService {
       final DocumentSnapshot conversationDoc = await _conversationsCollection.doc(conversationId).get();
       
       if (!conversationDoc.exists) {
-        // Create new conversation
-        final Conversation conversation = Conversation(
-          id: conversationId,
-          participantIds: [userId1, userId2],
-          lastActivity: DateTime.now(),
-          unreadCount: 0,
-        );
+        // Get participant display names
+        final user1Doc = await _firestore.collection('users').doc(userId1).get();
+        final user2Doc = await _firestore.collection('users').doc(userId2).get();
+        
+        final user1Name = user1Doc.exists 
+            ? (user1Doc.data() as Map<String, dynamic>)['displayName'] ?? 'Unknown User'
+            : 'Unknown User';
+        final user2Name = user2Doc.exists 
+            ? (user2Doc.data() as Map<String, dynamic>)['displayName'] ?? 'Unknown User' 
+            : 'Unknown User';
 
-        await _conversationsCollection.doc(conversationId).set(conversation.toJson());
+        // Create new conversation
+        final conversationData = {
+          'id': conversationId,
+          'participantIds': [userId1, userId2],
+          'lastMessage': '',
+          'lastActivity': FieldValue.serverTimestamp(),
+          'lastMessageSenderId': '',
+          'unreadCount': 0,
+          'isActive': true,
+          'participantNames': {
+            userId1: user1Name,
+            userId2: user2Name,
+          },
+          'participantAvatars': {
+            userId1: user1Doc.exists 
+                ? (user1Doc.data() as Map<String, dynamic>)['profileImageUrl'] 
+                : null,
+            userId2: user2Doc.exists 
+                ? (user2Doc.data() as Map<String, dynamic>)['profileImageUrl'] 
+                : null,
+          },
+        };
+
+        await _conversationsCollection.doc(conversationId).set(conversationData);
       }
 
       return conversationId;
@@ -50,31 +76,31 @@ class ChatService {
   }) async {
     try {
       final DocumentReference messageRef = _messagesCollection.doc();
-      final DateTime now = DateTime.now();
 
-      final Message message = Message(
-        id: messageRef.id,
-        conversationId: conversationId,
-        senderId: senderId,
-        content: content,
-        type: type,
-        timestamp: now,
-        isRead: false,
-        metadata: imageUrl != null ? {'imageUrl': imageUrl} : null,
-      );
+      final messageData = {
+        'id': messageRef.id,
+        'conversationId': conversationId,
+        'senderId': senderId,
+        'content': content,
+        'type': type.toString().split('.').last,
+        'timestamp': FieldValue.serverTimestamp(),
+        'isRead': false,
+        'replyToMessageId': null,
+        'metadata': imageUrl != null ? {'imageUrl': imageUrl} : null,
+      };
 
       final WriteBatch batch = _firestore.batch();
 
       // Add message
-      batch.set(messageRef, message.toJson());
+      batch.set(messageRef, messageData);
 
       // Update conversation
       final DocumentReference conversationRef = _conversationsCollection.doc(conversationId);
       batch.update(conversationRef, {
         'lastMessage': content,
-        'lastMessageTime': Timestamp.fromDate(now),
+        'lastActivity': FieldValue.serverTimestamp(),
         'lastMessageSenderId': senderId,
-        'unreadCount.$receiverId': FieldValue.increment(1),
+        'unreadCount': FieldValue.increment(1),
         'isActive': true,
       });
 
@@ -90,27 +116,64 @@ class ChatService {
   Stream<List<Message>> getMessages(String conversationId, {int limit = 50}) {
     return _messagesCollection
         .where('conversationId', isEqualTo: conversationId)
-        .orderBy('timestamp', descending: true)
-        .limit(limit)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs
-          .map((doc) => Message.fromJson(doc.data() as Map<String, dynamic>))
+      final messages = snapshot.docs
+          .map((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            // Handle server timestamp conversion
+            if (data['timestamp'] != null) {
+              if (data['timestamp'] is Timestamp) {
+                data['timestamp'] = (data['timestamp'] as Timestamp).toDate().toIso8601String();
+              }
+            } else {
+              data['timestamp'] = DateTime.now().toIso8601String();
+            }
+            return Message.fromJson(data);
+          })
           .toList();
+      
+      // Sort by timestamp manually
+      messages.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      
+      return messages.take(limit).toList();
     });
   }
 
   // Get conversations for a user
   Stream<List<Conversation>> getUserConversations(String userId) {
     return _conversationsCollection
-        .where('participants', arrayContains: userId)
-        .where('isActive', isEqualTo: true)
-        .orderBy('lastMessageTime', descending: true)
+        .where('participantIds', arrayContains: userId)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs
-          .map((doc) => Conversation.fromJson(doc.data() as Map<String, dynamic>))
+      final conversations = snapshot.docs
+          .map((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            // Handle server timestamp conversion
+            if (data['lastActivity'] != null && data['lastActivity'] is Timestamp) {
+              data['lastActivity'] = (data['lastActivity'] as Timestamp).toDate().toIso8601String();
+            } else if (data['lastActivity'] == null) {
+              data['lastActivity'] = DateTime.now().toIso8601String();
+            }
+            
+            // Create a conversation model with participant names
+            return Conversation(
+              id: data['id'] ?? '',
+              participantIds: List<String>.from(data['participantIds'] ?? []),
+              lastActivity: data['lastActivity'] is String 
+                ? DateTime.parse(data['lastActivity'])
+                : DateTime.now(),
+              unreadCount: data['unreadCount'] ?? 0,
+              participantNames: Map<String, String>.from(data['participantNames'] ?? {}),
+              participantAvatars: Map<String, String?>.from(data['participantAvatars'] ?? {}),
+            );
+          })
           .toList();
+      
+      // Sort by last activity manually
+      conversations.sort((a, b) => b.lastActivity.compareTo(a.lastActivity));
+      
+      return conversations;
     });
   }
 

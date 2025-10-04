@@ -79,7 +79,27 @@ class Conversation {
       orElse: () => currentUserId,
     );
     
-    return participantNames[otherParticipantId] ?? 'Unknown User';
+    // Return participant name if available, otherwise try to create a fallback
+    final displayName = participantNames[otherParticipantId];
+    if (displayName != null && displayName.isNotEmpty) {
+      return displayName;
+    }
+    
+    // Fallback: Use user ID as display name (better than "Unknown User")
+    return 'User ${otherParticipantId.substring(0, 8)}...';
+  }
+
+  String? getTargetUserId(String currentUserId) {
+    if (type == ConversationType.group) {
+      return null; // No single target for group chats
+    }
+    
+    // For direct messages, return the other participant's ID
+    try {
+      return participantIds.firstWhere((id) => id != currentUserId);
+    } catch (e) {
+      return null;
+    }
   }
 
   String? getDisplayImage(String currentUserId) {

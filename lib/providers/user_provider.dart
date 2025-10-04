@@ -1,68 +1,14 @@
 import 'package:flutter/material.dart';
 import '../models/user_model.dart';
+import '../services/user_service.dart';
 
 class UserProvider with ChangeNotifier {
+  final UserService _userService = UserService();
   final Map<String, User> _users = {};
   bool _isLoading = false;
 
   Map<String, User> get users => _users;
   bool get isLoading => _isLoading;
-
-  // Mock users data
-  final List<User> _mockUsers = [
-    User(
-      id: '1',
-      username: 'john_doe',
-      email: 'john@example.com',
-      displayName: 'John Doe',
-      profileImageUrl: null,
-      bio: 'Flutter Developer & Social Media Enthusiast',
-      followersCount: 1250,
-      followingCount: 890,
-      postsCount: 42,
-      createdAt: DateTime.now().subtract(const Duration(days: 365)),
-      isVerified: true,
-    ),
-    User(
-      id: '2',
-      username: 'jane_smith',
-      email: 'jane@example.com',
-      displayName: 'Jane Smith',
-      profileImageUrl: null,
-      bio: 'Photographer | Nature Lover | Coffee Addict ☕',
-      followersCount: 2340,
-      followingCount: 567,
-      postsCount: 89,
-      createdAt: DateTime.now().subtract(const Duration(days: 200)),
-      isVerified: false,
-    ),
-    User(
-      id: '3',
-      username: 'alex_codes',
-      email: 'alex@example.com',
-      displayName: 'Alex Johnson',
-      profileImageUrl: null,
-      bio: 'Full Stack Developer | Tech Enthusiast | Digital Nomad',
-      followersCount: 890,
-      followingCount: 1200,
-      postsCount: 156,
-      createdAt: DateTime.now().subtract(const Duration(days: 180)),
-      isVerified: true,
-    ),
-    User(
-      id: '4',
-      username: 'sarah_dev',
-      email: 'sarah@example.com',
-      displayName: 'Sarah Wilson',
-      profileImageUrl: null,
-      bio: 'UI/UX Designer | Web Developer | Creative Mind',
-      followersCount: 1580,
-      followingCount: 743,
-      postsCount: 67,
-      createdAt: DateTime.now().subtract(const Duration(days: 90)),
-      isVerified: false,
-    ),
-  ];
 
   Future<User?> getUserById(String userId) async {
     if (_users.containsKey(userId)) {
@@ -72,17 +18,16 @@ class UserProvider with ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    // Simulate API call delay
-    await Future.delayed(const Duration(milliseconds: 500));
-
-    // Find user in mock data
     try {
-      final user = _mockUsers.firstWhere((u) => u.id == userId);
-      _users[userId] = user;
+      final user = await _userService.getUserById(userId);
+      if (user != null) {
+        _users[userId] = user;
+      }
       _isLoading = false;
       notifyListeners();
       return user;
     } catch (e) {
+      print('UserProvider: Error getting user by ID: $e');
       _isLoading = false;
       notifyListeners();
       return null;
@@ -90,71 +35,110 @@ class UserProvider with ChangeNotifier {
   }
 
   Future<List<User>> searchUsers(String query) async {
+    if (query.trim().isEmpty) return [];
+    
     _isLoading = true;
     notifyListeners();
 
-    // Simulate API call delay
-    await Future.delayed(const Duration(seconds: 1));
-
-    final results = _mockUsers.where((user) =>
-      user.displayName.toLowerCase().contains(query.toLowerCase()) ||
-      user.username.toLowerCase().contains(query.toLowerCase())
-    ).toList();
-
-    _isLoading = false;
-    notifyListeners();
-
-    return results;
+    try {
+      final results = await _userService.searchUsers(query.trim());
+      _isLoading = false;
+      notifyListeners();
+      return results;
+    } catch (e) {
+      print('UserProvider: Error searching users: $e');
+      _isLoading = false;
+      notifyListeners();
+      return [];
+    }
   }
 
   Future<List<User>> getSuggestedUsers() async {
     _isLoading = true;
     notifyListeners();
 
-    // Simulate API call delay
-    await Future.delayed(const Duration(seconds: 1));
-
-    // Return a subset of mock users as suggestions
-    final suggestions = _mockUsers.take(3).toList();
-
-    _isLoading = false;
-    notifyListeners();
-
-    return suggestions;
+    try {
+      final suggestions = await _userService.getAllUsers();
+      
+      // If no users found, create mock users for testing
+      if (suggestions.isEmpty) {
+        print('No users found, creating mock users...');
+        await _userService.createMockUsers();
+        await Future.delayed(const Duration(seconds: 1)); // Wait for Firebase to sync
+        final newSuggestions = await _userService.getAllUsers();
+        _isLoading = false;
+        notifyListeners();
+        return newSuggestions.take(10).toList();
+      }
+      
+      _isLoading = false;
+      notifyListeners();
+      return suggestions.take(10).toList(); // Return top 10 users as suggestions
+    } catch (e) {
+      print('UserProvider: Error getting suggested users: $e');
+      _isLoading = false;
+      notifyListeners();
+      return [];
+    }
   }
 
-  Future<bool> followUser(String userId) async {
-    final user = _users[userId];
-    if (user == null) return false;
-
-    // Simulate API call
-    await Future.delayed(const Duration(milliseconds: 300));
-
-    _users[userId] = user.copyWith(
-      followersCount: user.followersCount + 1,
-    );
-    
-    notifyListeners();
-    return true;
+  Future<bool> followUser(String currentUserId, String targetUserId) async {
+    try {
+      await _userService.followUser(currentUserId, targetUserId);
+      
+      // Update local cache if user exists
+      final user = _users[targetUserId];
+      if (user != null) {
+        _users[targetUserId] = user.copyWith(
+          followersCount: user.followersCount + 1,
+        );
+        notifyListeners();
+      }
+      
+      return true;
+    } catch (e) {
+      print('UserProvider: Error following user: $e');
+      return false;
+    }
   }
 
-  Future<bool> unfollowUser(String userId) async {
-    final user = _users[userId];
-    if (user == null) return false;
-
-    // Simulate API call
-    await Future.delayed(const Duration(milliseconds: 300));
-
-    _users[userId] = user.copyWith(
-      followersCount: user.followersCount - 1,
-    );
-    
-    notifyListeners();
-    return true;
+  Future<bool> unfollowUser(String currentUserId, String targetUserId) async {
+    try {
+      await _userService.unfollowUser(currentUserId, targetUserId);
+      
+      // Update local cache if user exists
+      final user = _users[targetUserId];
+      if (user != null) {
+        _users[targetUserId] = user.copyWith(
+          followersCount: user.followersCount - 1,
+        );
+        notifyListeners();
+      }
+      
+      return true;
+    } catch (e) {
+      print('UserProvider: Error unfollowing user: $e');
+      return false;
+    }
   }
 
-  List<User> getAllUsers() {
-    return _mockUsers;
+  Future<List<User>> getAllUsers() async {
+    try {
+      return await _userService.getAllUsers();
+    } catch (e) {
+      print('UserProvider: Error getting all users: $e');
+      return [];
+    }
+  }
+
+  // Check if current user is following target user
+  Future<bool> isFollowing(String currentUserId, String targetUserId) async {
+    try {
+      return await _userService.isFollowing(currentUserId, targetUserId);
+    } catch (e) {
+      print('UserProvider: Error checking follow status: $e');
+      return false;
+    }
   }
 
   void clearUsers() {

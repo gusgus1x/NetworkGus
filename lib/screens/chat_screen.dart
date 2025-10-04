@@ -8,11 +8,13 @@ import '../widgets/message_bubble.dart';
 class ChatScreen extends StatefulWidget {
   final String conversationId;
   final String conversationName;
+  final String? targetUserId;
 
   const ChatScreen({
     Key? key,
     required this.conversationId,
     required this.conversationName,
+    this.targetUserId,
   }) : super(key: key);
 
   @override
@@ -22,13 +24,10 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  List<Message> _messages = [];
-  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadMessages();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<ChatProvider>().setActiveConversation(widget.conversationId);
     });
@@ -42,45 +41,49 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-  Future<void> _loadMessages() async {
-    final chatProvider = context.read<ChatProvider>();
-    final messages = await chatProvider.getMessages(widget.conversationId);
-    if (mounted) {
-      setState(() {
-        _messages = messages;
-        _isLoading = false;
-      });
-      _scrollToBottom();
-    }
-  }
 
-  void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
-    });
-  }
 
   Future<void> _sendMessage() async {
     final content = _messageController.text.trim();
     if (content.isEmpty) return;
 
+    final authProvider = context.read<AuthProvider>();
+    final currentUser = authProvider.user;
+    if (currentUser == null) return;
+
     _messageController.clear();
     
-    await context.read<ChatProvider>().sendMessage(widget.conversationId, content);
-    
-    // Reload messages to get the updated list
-    _loadMessages();
+    try {
+      String? targetUserId = widget.targetUserId;
+      
+      // If no targetUserId provided, try to get it from conversation
+      if (targetUserId == null) {
+        final conversation = context.read<ChatProvider>().getConversationById(widget.conversationId);
+        if (conversation != null) {
+          targetUserId = conversation.getTargetUserId(currentUser.uid);
+        }
+      }
+      
+      if (targetUserId == null) {
+        throw Exception('Unable to determine target user');
+      }
+
+      await context.read<ChatProvider>().sendMessage(
+        widget.conversationId,
+        content,
+        currentUser.uid,
+        targetUserId,
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to send message: $e')),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final currentUser = context.watch<AuthProvider>().currentUser;
+    final currentUser = context.watch<AuthProvider>().user;
     
     return Scaffold(
       appBar: AppBar(
@@ -146,56 +149,62 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _messages.isEmpty
-                    ? const Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.chat_bubble_outline,
-                              size: 64,
-                              color: Colors.grey,
-                            ),
-                            SizedBox(height: 16),
-                            Text(
-                              'No messages yet',
-                              style: TextStyle(
-                                fontSize: 18,
-                                color: Colors.grey,
-                              ),
-                            ),
-                            Text(
-                              'Send the first message!',
-                              style: TextStyle(color: Colors.grey),
-                            ),
-                          ],
+            child: Consumer<ChatProvider>(
+              builder: (context, chatProvider, child) {
+                final messages = chatProvider.getMessages(widget.conversationId);
+                
+                if (messages.isEmpty) {
+                  return const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.chat_bubble_outline,
+                          size: 64,
+                          color: Colors.grey,
                         ),
-                      )
-                    : ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _messages.length,
-                        itemBuilder: (context, index) {
-                          final message = _messages[index];
-                          final isMe = message.senderId == (currentUser?.id ?? '1');
-                          final showDateSeparator = _shouldShowDateSeparator(index);
-                          
-                          return Column(
-                            children: [
-                              if (showDateSeparator)
-                                _buildDateSeparator(_messages[index].timestamp),
-                              MessageBubble(
-                                message: message,
-                                isMe: isMe,
-                                showAvatar: !isMe && _shouldShowAvatar(index),
-                                senderName: _getSenderName(message.senderId),
-                              ),
-                            ],
-                          );
-                        },
-                      ),
+                        SizedBox(height: 16),
+                        Text(
+                          'No messages yet',
+                          style: TextStyle(
+                            fontSize: 18,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        Text(
+                          'Send the first message!',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.all(16),
+                  itemCount: messages.length,
+                  itemBuilder: (context, index) {
+                    final message = messages[index];
+                    final isMe = message.senderId == (currentUser?.uid ?? 'unknown');
+                    final showDateSeparator = _shouldShowDateSeparator(index, messages);
+                    
+                    return Column(
+                      children: [
+                        if (showDateSeparator)
+                          _buildDateSeparator(messages[index].timestamp),
+                        MessageBubble(
+                          message: message,
+                          isMe: isMe,
+                          showAvatar: !isMe && _shouldShowAvatar(index, messages),
+                          senderName: _getSenderName(message.senderId),
+                        ),
+                      ],
+                    );
+                  },
+                );
+              },
+            ),
           ),
           _buildMessageInput(),
         ],
@@ -291,11 +300,11 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  bool _shouldShowDateSeparator(int index) {
+  bool _shouldShowDateSeparator(int index, List<Message> messages) {
     if (index == 0) return true;
     
-    final currentMessage = _messages[index];
-    final previousMessage = _messages[index - 1];
+    final currentMessage = messages[index];
+    final previousMessage = messages[index - 1];
     
     final currentDate = DateTime(
       currentMessage.timestamp.year,
@@ -312,11 +321,11 @@ class _ChatScreenState extends State<ChatScreen> {
     return currentDate != previousDate;
   }
 
-  bool _shouldShowAvatar(int index) {
-    if (index == _messages.length - 1) return true;
+  bool _shouldShowAvatar(int index, List<Message> messages) {
+    if (index == messages.length - 1) return true;
     
-    final currentMessage = _messages[index];
-    final nextMessage = _messages[index + 1];
+    final currentMessage = messages[index];
+    final nextMessage = messages[index + 1];
     
     return currentMessage.senderId != nextMessage.senderId;
   }
@@ -417,11 +426,9 @@ class _ChatScreenState extends State<ChatScreen> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              setState(() {
-                _messages.clear();
-              });
+              // TODO: Implement clear chat functionality if needed
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Chat cleared')),
+                const SnackBar(content: Text('Clear chat not implemented yet')),
               );
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
