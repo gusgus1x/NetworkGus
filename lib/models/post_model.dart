@@ -14,23 +14,25 @@ class Post {
   final String username;
   final String? userProfileImageUrl;
   final bool isUserVerified;
+  final String? groupId;
 
   Post({
-    required this.id,
-    required this.userId,
-    required this.content,
-    this.imageUrls,
-    required this.createdAt,
-    this.updatedAt,
-    this.likesCount = 0,
-    this.commentsCount = 0,
-    this.sharesCount = 0,
-    this.isLiked = false,
-    this.isBookmarked = false,
-    required this.userDisplayName,
-    required this.username,
-    this.userProfileImageUrl,
-    this.isUserVerified = false,
+  required this.id,
+  required this.userId,
+  required this.content,
+  this.imageUrls,
+  required this.createdAt,
+  this.updatedAt,
+  this.likesCount = 0,
+  this.commentsCount = 0,
+  this.sharesCount = 0,
+  this.isLiked = false,
+  this.isBookmarked = false,
+  required this.userDisplayName,
+  required this.username,
+  this.userProfileImageUrl,
+  this.isUserVerified = false,
+  this.groupId,
   });
 
   factory Post.fromJson(Map<String, dynamic> json) {
@@ -54,9 +56,9 @@ class Post {
       username: json['username'],
       userProfileImageUrl: json['userProfileImageUrl'],
       isUserVerified: json['isUserVerified'] ?? false,
+      groupId: json['groupId'],
     );
   }
-
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -74,6 +76,7 @@ class Post {
       'username': username,
       'userProfileImageUrl': userProfileImageUrl,
       'isUserVerified': isUserVerified,
+      'groupId': groupId,
     };
   }
 

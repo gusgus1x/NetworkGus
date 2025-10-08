@@ -8,6 +8,7 @@ class PostsProvider with ChangeNotifier {
   final PostService _postService = PostService();
   
   List<Post> _posts = [];
+  List<Post> _groupPosts = [];
   bool _isLoading = false;
   bool _hasMore = true;
   
@@ -20,6 +21,7 @@ class PostsProvider with ChangeNotifier {
   StreamSubscription<List<Post>>? _postsSubscription;
 
   List<Post> get posts => _posts;
+  List<Post> get groupPosts => _groupPosts;
   bool get isLoading => _isLoading;
   bool get hasMore => _hasMore;
   
@@ -168,14 +170,28 @@ class PostsProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> fetchGroupPosts(String groupId) async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      _groupPosts = await _postService.getGroupPosts(groupId);
+    } catch (e) {
+      print('Error fetching group posts: $e');
+      _groupPosts = [];
+    }
+    _isLoading = false;
+    notifyListeners();
+  }
+
   Future<void> createPost({
-    required String content,
-    required String userId,
-    required String userDisplayName,
-    required String username,
-    String? userProfileImageUrl,
-    bool isUserVerified = false,
-    List<String>? imageUrls,
+  required String content,
+  required String userId,
+  required String userDisplayName,
+  required String username,
+  String? userProfileImageUrl,
+  bool isUserVerified = false,
+  List<String>? imageUrls,
+  String? groupId,
   }) async {
     _isLoading = true;
     notifyListeners();
@@ -189,6 +205,7 @@ class PostsProvider with ChangeNotifier {
         userProfileImageUrl: userProfileImageUrl,
         isUserVerified: isUserVerified,
         imageUrls: imageUrls,
+        groupId: groupId,
       );
 
       // Refresh posts to show the new post

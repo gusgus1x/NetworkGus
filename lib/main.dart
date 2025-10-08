@@ -6,6 +6,7 @@ import 'providers/auth_provider.dart';
 import 'providers/posts_provider.dart';
 import 'providers/user_provider.dart';
 import 'providers/chat_provider.dart';
+import 'providers/group_provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 
@@ -28,6 +29,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => PostsProvider()),
         ChangeNotifierProvider(create: (_) => UserProvider()),
         ChangeNotifierProvider(create: (_) => ChatProvider()),
+        ChangeNotifierProvider(create: (_) => GroupProvider()),
       ],
       child: MaterialApp(
         title: 'SocialNetwork',

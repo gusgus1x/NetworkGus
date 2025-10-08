@@ -8,6 +8,7 @@ import '../widgets/create_post_dialog.dart';
 import 'user_profile_screen.dart';
 import 'search_screen.dart';
 import 'chat_list_screen.dart';
+import 'group_list_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -148,6 +149,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     }
 
                     final post = postsProvider.posts[index];
+                    // ไม่แสดงโพสต์กลุ่มในหน้า home
+                    if (post.groupId != null && post.groupId!.isNotEmpty) {
+                      return const SizedBox.shrink();
+                    }
                     return PostCard(post: post);
                   },
                   childCount: postsProvider.posts.length + (postsProvider.hasMore ? 1 : 0),
@@ -170,6 +175,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildProfileTab() {
     return const UserProfileScreen(); // null userId means current user's profile
+  }
+
+  Widget _buildGroupTab() {
+  return GroupListScreen();
   }
 
   @override
@@ -262,6 +271,7 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           _buildFeedTab(),
           _buildSearchTab(),
+          _buildGroupTab(),
           _buildChatTab(),
           _buildProfileTab(),
         ],
@@ -298,6 +308,10 @@ class _HomeScreenState extends State<HomeScreen> {
               const BottomNavigationBarItem(
                 icon: Icon(Icons.search),
                 label: 'Search',
+              ),
+              const BottomNavigationBarItem(
+                icon: Icon(Icons.group),
+                label: 'Group',
               ),
               BottomNavigationBarItem(
                 icon: Stack(

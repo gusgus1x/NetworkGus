@@ -4,7 +4,8 @@ import '../providers/posts_provider.dart';
 import '../providers/auth_provider.dart';
 
 class CreatePostDialog extends StatefulWidget {
-  const CreatePostDialog({Key? key}) : super(key: key);
+  final String? groupId;
+  const CreatePostDialog({Key? key, this.groupId}) : super(key: key);
 
   @override
   State<CreatePostDialog> createState() => _CreatePostDialogState();
@@ -39,11 +40,16 @@ class _CreatePostDialogState extends State<CreatePostDialog> {
         username: currentUser.username,
         userProfileImageUrl: currentUser.profileImageUrl,
         isUserVerified: currentUser.isVerified,
+        groupId: widget.groupId,
       );
+      // รีโหลดโพสต์กลุ่มทันทีหลังโพสต์
+      if (widget.groupId != null && widget.groupId!.isNotEmpty) {
+        await context.read<PostsProvider>().fetchGroupPosts(widget.groupId!);
+      }
     }
     
     if (mounted) {
-      Navigator.pop(context);
+      Navigator.of(context, rootNavigator: false).pop();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Post created successfully!'),

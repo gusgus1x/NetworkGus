@@ -19,6 +19,7 @@ class PostService {
     bool isUserVerified = false,
     List<File>? imageFiles,
     List<String>? imageUrls,
+    String? groupId,
   }) async {
     try {
       List<String> uploadedImageUrls = [];
@@ -47,6 +48,7 @@ class PostService {
         username: username,
         userProfileImageUrl: userProfileImageUrl,
         isUserVerified: isUserVerified,
+        groupId: groupId,
       );
 
       await postRef.set(post.toJson());
@@ -55,6 +57,13 @@ class PostService {
       await _firestore.collection('users').doc(userId).update({
         'postsCount': FieldValue.increment(1),
       });
+
+      // ถ้าเป็นโพสต์ในกลุ่ม ให้เพิ่ม postId เข้า group.postIds
+      if (groupId != null && groupId.isNotEmpty) {
+        await _firestore.collection('groups').doc(groupId).update({
+          'postIds': FieldValue.arrayUnion([postRef.id]),
+        });
+      }
 
       return postRef.id;
     } catch (e) {
@@ -552,6 +561,23 @@ class PostService {
     } catch (e) {
       print('Get trending posts error: $e');
       throw Exception('Failed to get trending posts');
+    }
+  }
+
+  // Get group posts
+  Future<List<Post>> getGroupPosts(String groupId, {int limit = 20}) async {
+    try {
+      final querySnapshot = await _postsCollection
+          .where('groupId', isEqualTo: groupId)
+          .orderBy('createdAt', descending: true)
+          .limit(limit)
+          .get();
+      return querySnapshot.docs
+          .map((doc) => Post.fromJson(doc.data() as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      print('Get group posts error: $e');
+      return [];
     }
   }
 }

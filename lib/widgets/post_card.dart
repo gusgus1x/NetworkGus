@@ -3,9 +3,12 @@ import 'package:provider/provider.dart';
 import '../models/post_model.dart';
 import '../providers/posts_provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/group_provider.dart';
 import '../widgets/user_avatar.dart';
 import '../screens/post_detail_screen.dart';
 import '../screens/user_profile_screen.dart';
+import '../models/group_model.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class PostCard extends StatelessWidget {
   final Post post;
@@ -113,6 +116,27 @@ class PostCard extends StatelessWidget {
                           ],
                         ],
                       ),
+                      // แสดงชื่อกลุ่มถ้าเป็นโพสต์ในกลุ่ม
+                      if (post.groupId != null && post.groupId!.isNotEmpty) ...[
+                        Row(
+                          children: [
+                            Icon(Icons.group, color: Colors.purple.shade300, size: 16),
+                            const SizedBox(width: 4),
+                            FutureBuilder<String>(
+                              future: _getGroupName(context, post.groupId!),
+                              builder: (context, snapshot) {
+                                if (snapshot.connectionState == ConnectionState.waiting) {
+                                  return const Text('...', style: TextStyle(color: Colors.white70, fontSize: 13));
+                                }
+                                if (snapshot.hasData) {
+                                  return Text(snapshot.data!, style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500));
+                                }
+                                return const SizedBox.shrink();
+                              },
+                            ),
+                          ],
+                        ),
+                      ],
                       if (post.content.length > 100) // Show location for longer posts
                         Text(
                           'Bangkok, Thailand',
@@ -680,5 +704,33 @@ class PostCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<String> _getGroupName(BuildContext context, String groupId) async {
+    // ดึงชื่อกลุ่มจาก groupProvider หรือ Firestore โดยตรง
+    final groupProvider = Provider.of<GroupProvider>(context, listen: false);
+    final group = groupProvider.groups.firstWhere(
+      (g) => g.id == groupId,
+      orElse: () => Group(
+        id: '',
+        name: '',
+        description: '',
+        ownerId: '',
+        members: [],
+        postIds: [],
+        createdAt: DateTime.now(),
+      ),
+    );
+    if (group.name.isNotEmpty) return group.name;
+    // ถ้าไม่เจอใน provider ให้ดึงจาก Firestore
+    // (กรณี groupProvider ไม่ได้โหลดกลุ่มนั้น)
+    try {
+      final doc = await FirebaseFirestore.instance.collection('groups').doc(groupId).get();
+      if (doc.exists) {
+        final data = doc.data();
+        if (data != null && data['name'] != null) return data['name'] as String;
+      }
+    } catch (_) {}
+    return 'Group';
   }
 }
